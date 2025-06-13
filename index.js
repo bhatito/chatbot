@@ -14,9 +14,11 @@ const client = new Client({
   authStrategy: new LocalAuth(),
   puppeteer: {
     headless: true,
-    executablePath: puppeteer.executablePath() 
+    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    executablePath: puppeteer.executablePath()
   }
 });
+
 
 client.on('qr', qr => {
   console.log('Scan QR code berikut untuk login WhatsApp:');
