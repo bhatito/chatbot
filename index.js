@@ -1,84 +1,126 @@
+// index.js
 const express = require('express');
 const qrcode = require('qrcode-terminal');
 const { Client, LocalAuth } = require('whatsapp-web.js');
-const puppeteer = require('puppeteer');
 const Groq = require('groq-sdk');
 require('dotenv').config();
-
-const prompt = require('./prompt'); 
+const instruksiBot = require('./prompt'); 
 
 const app = express();
 app.use(express.json());
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-const client = new Client({
-  authStrategy: new LocalAuth(),
-  puppeteer: {
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    executablePath: puppeteer.executablePath()
-  }
+
+// Setup Groq SDK
+const grok = new Groq({ apiKey: process.env.GROQ_API_KEY });
+
+// Setup WhatsApp Client
+const waClient = new Client({
+  authStrategy: new LocalAuth(), 
+  puppeteer: { headless: true }
 });
 
-
-client.on('qr', qr => {
-  console.log('Scan QR code berikut untuk login WhatsApp:');
+waClient.on('qr', qr => {
+  console.log('Bro, scan QR ini pake WA lu:');
   qrcode.generate(qr, { small: true });
 });
 
-client.on('ready', () => {
-  console.log('✅ WhatsApp client siap! Nomor Anda sudah terhubung.');
+waClient.on('ready', () => {
+  console.log('WA udah nyala, siap nerima chat!');
 });
 
-const YOUR_WHATSAPP_NUMBER = process.env.YOUR_WHATSAPP_NUMBER || '+62xxxxxxxxxx';
+const nomorLu = process.env.YOUR_WHATSAPP_NUMBER || '+628123456789';
 
-client.on('message', async message => {
-  const incomingMessage = message.body.toLowerCase();
+waClient.on('message', async pesan => {
+  const pesanMasuk = pesan.body.toLowerCase();
 
-  if (incomingMessage === 'halo' || incomingMessage === 'hi') {
-    await message.reply('Halo! Selamat datang di layanan pelanggan kami. Silakan ajukan pertanyaan seputar pembuatan website atau aplikasi. Untuk informasi harga, ketik "harga".');
+  // Balas kalo customer bilang halo
+  if (pesanMasuk === 'halo' || pesanMasuk === 'hi') {
+    await pesan.reply('Halo, apa kabar? Selamat datang di layanan kami! Mau tanya soal bikin website atau app? Kalau mau tau harga, ketik "harga" aja.');
     return;
   }
 
-  if (incomingMessage.includes('harga') || incomingMessage.includes('biaya')) {
-    await message.reply('💸 Harga layanan kami mulai dari Rp1.000.000, tergantung fitur, desain, dan kompleksitas. Estimasi pengerjaan 7–14 hari. Silakan tanyakan detail lebih lanjut!');
+  // Balas kalo customer minta nomor admin
+  if (pesanMasuk === 'nomor admin' || pesanMasuk === 'no admin') {
+    await pesan.reply(`Silakan hubungi admin di: ${nomorLu}`);
     return;
   }
+
+  // Balas kalo customer ingin menghubungi
+  if (pesanMasuk === 'hubungi' || pesanMasuk === 'hub') {
+    await pesan.reply(`Silakan langsung hubungi admin di: ${nomorLu}`);
+    return;
+  }
+
+  // Balas kalo customer nanya soal harga
+  if (pesanMasuk.includes('harga') || pesanMasuk.includes('biaya')) {
+    await pesan.reply('Harga bikin website atau app mulai dari Rp1.000.000, tergantung fitur, desain, dan kerumitan. Estimasi selesai 7–14 hari. Mau detail lebih lanjut?');
+    return;
+  }
+
+  // Evaluasi permintaan negosiasi harga menggunakan Groq
+  const polaNegosiasi = /(kurang|nego|bisa\s(kurang|tawar)|diskon|murah|potongan|boleh\snego|harga\sberapa|bisakah\slebih\s|bisa\slebih\s|harga\smasih\s|bisa\slebih\smurah)/i;
+
+    if (polaNegosiasi.test(pesanMasuk)) {
+      try {
+        const responsNego = await grok.chat.completions.create({
+          messages: [
+            {
+              role: "system",
+              content: `Kamu adalah asisten penjualan jasa pembuatan website dan aplikasi. Tugasmu adalah mengevaluasi apakah pesan dari calon pembeli mengandung penawaran harga yang terlalu rendah atau permintaan negosiasi. Jika iya, jawab dengan sopan dan ramah. Jangan langsung setuju, tapi beri ruang diskusi dan arahkan ke langkah selanjutnya.`,
+            },
+            {
+              role: "user",
+              content: `Customer berkata: "${pesanMasuk}". Berikan respon profesional untuk melanjutkan negosiasi dengan nada positif dan persuasif.`,
+            },
+          ],
+          model: "llama-3.3-70b-versatile"
+        });
+
+        const balasanNego = responsNego.choices[0]?.message?.content || 'Terima kasih, kita bisa diskusikan lebih lanjut soal harga ini 😊';
+        await pesan.reply(balasanNego);
+        return;
+      } catch (error) {
+        console.error('Error negosiasi Groq:', error.message);
+        await pesan.reply('Maaf, sedang ada masalah saat memproses permintaan kamu. Coba kirim lagi ya.');
+        return;
+      }
+    }
+
 
   try {
-    const completion = await groq.chat.completions.create({
+    const jawabanGrok = await grok.chat.completions.create({
       messages: [
         {
           role: "system",
-          content: prompt, 
+          content: instruksiBot,
         },
         {
           role: "user",
-          content: incomingMessage,
+          content: pesanMasuk,
         },
       ],
-      model: "llama-3-70b-8192" 
+      model: "llama-3.3-70b-versatile",
     });
 
-    let botReply = completion.choices[0]?.message?.content || 'Maaf, saya tidak bisa menjawab pertanyaan ini.';
+    let balasanBot = jawabanGrok.choices[0]?.message?.content || 'Sori bro, aku bingung jawab ini.';
 
-    if (!botReply.trim()) {
-      botReply = `Maaf, saya tidak bisa menjawab pertanyaan ini. Silakan hubungi kami di ${YOUR_WHATSAPP_NUMBER} untuk bantuan lebih lanjut.`;
+    if (!jawabanGrok.choices[0]?.message?.content) {
+      balasanBot = `Sori, aku ga bisa bantu jawab. Langsung chat ke ${nomorLu} aja ya buat info lebih lanjut!`;
     }
 
-    await message.reply(botReply);
+    await pesan.reply(balasanBot);
   } catch (error) {
-    console.error('❌ Error saat memproses pesan:', error.message);
-    await message.reply(`⚠️ Terjadi kesalahan, silakan coba lagi atau hubungi ${YOUR_WHATSAPP_NUMBER}.`);
+    console.error('Waduh, error:', error.message);
+    await pesan.reply(`Eh, ada masalah nih. Coba lagi atau chat ke ${nomorLu} ya!`);
   }
 });
 
-client.initialize();
+waClient.initialize();
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🚀 Server berjalan di http://localhost:${PORT}`);
+const port = 3000;
+app.listen(port, () => {
+  console.log(`Server jalan di http://localhost:${port}, gas pol bro!`);
 });
 
 app.get('/', (req, res) => {
-  res.send('🤖 WhatsApp Bot berjalan!');
+  res.send('Bot WA lagi on, siap bantu customer!');
 });

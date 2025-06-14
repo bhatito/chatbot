@@ -1,3 +1,18 @@
-node_modules/
-.env
+# Folder sesi WhatsApp (login token)
 .wwebjs_auth/
+
+# File environment (isi API key & nomor pribadi)
+.env
+
+# Folder dependency
+node_modules/
+
+# File log/debug
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS file (Windows/macOS)
+.DS_Store
+Thumbs.db
