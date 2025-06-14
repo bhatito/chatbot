@@ -14,8 +14,11 @@ const grok = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 // Setup WhatsApp Client
 const waClient = new Client({
-  authStrategy: new LocalAuth(), 
-  puppeteer: { headless: true }
+  authStrategy: new LocalAuth(),
+  puppeteer: {
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
+  }
 });
 
 waClient.on('qr', qr => {
